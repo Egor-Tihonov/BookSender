@@ -12,4 +12,15 @@
 // как бот получает сообщения: вебхук на сервере или опрос на ПК.
 package main
 
-func main() {}
+import (
+	"booksender/internal"
+	"os"
+)
+
+func main() {
+	_, err := internal.LoadConfig()
+	if err != nil {
+		os.Exit(1) // полная остановка, defer не выполняется
+	}
+
+}
