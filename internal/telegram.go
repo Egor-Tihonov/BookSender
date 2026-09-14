@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -117,23 +118,30 @@ type getFileResponse struct {
 
 // Download скачивает файл fileID в папку dir. Возвращает путь на диске.
 func (t *Telegram) Download(ctx context.Context, fileID, dir string) (string, error) {
+	slog.Info("telegram: скачивание начато", "file_id", fileID)
+
 	getFileURL := fmt.Sprintf("https://api.telegram.org/bot%s/getFile?file_id=%s", t.token, fileID)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, getFileURL, nil)
 	if err != nil {
+		slog.Error("telegram: getFile не удался", "file_id", fileID, "error", err)
 		return "", err
 	}
 	resp, err := t.client.Do(req)
 	if err != nil {
+		slog.Error("telegram: getFile не удался", "file_id", fileID, "error", err)
 		return "", err
 	}
 	defer resp.Body.Close()
 
 	var gf getFileResponse
 	if err := json.NewDecoder(resp.Body).Decode(&gf); err != nil {
+		slog.Error("telegram: getFile не удался", "file_id", fileID, "error", err)
 		return "", err
 	}
 	if !gf.OK {
-		return "", fmt.Errorf("getFile: %s", gf.Description)
+		err := fmt.Errorf("getFile: %s", gf.Description)
+		slog.Error("telegram: getFile не удался", "file_id", fileID, "error", err)
+		return "", err
 	}
 
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -152,6 +160,7 @@ func (t *Telegram) Download(ctx context.Context, fileID, dir string) (string, er
 	defer dlResp.Body.Close()
 
 	if dlResp.StatusCode != http.StatusOK {
+		slog.Error("telegram: скачивание отклонено", "status", dlResp.StatusCode)
 		return "", fmt.Errorf("download: статус %d", dlResp.StatusCode)
 	}
 
@@ -162,12 +171,15 @@ func (t *Telegram) Download(ctx context.Context, fileID, dir string) (string, er
 	}
 	defer out.Close()
 
-	if _, err := io.Copy(out, dlResp.Body); err != nil {
+	size, err := io.Copy(out, dlResp.Body)
+	if err != nil {
+		slog.Error("telegram: скачивание прервано", "path", path, "error", err)
 		out.Close()
 		os.Remove(path) // не оставлять недокачанный файл
 		return "", err
 	}
 
+	slog.Info("telegram: файл скачан", "path", path, "size_bytes", size)
 	return path, nil
 }
 
@@ -196,7 +208,9 @@ func (t *Telegram) SendMessage(ctx context.Context, chatID int64, text string) e
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		slog.Error("telegram: sendMessage не удался", "chat_id", chatID, "status", resp.StatusCode)
 		return fmt.Errorf("sendMessage: статус %d", resp.StatusCode)
 	}
+	slog.Info("telegram: сообщение отправлено в чат", "chat_id", chatID)
 	return nil
 }

@@ -57,8 +57,10 @@ func LoadConfig() (*Config, error) {
 	// локально переменные берём из .env, на сервере файла нет и читается окружение
 	var err error
 	if _, statErr := os.Stat(".env"); statErr == nil {
+		slog.Info("конфиг читается из .env")
 		err = cleanenv.ReadConfig(".env", cfg)
 	} else {
+		slog.Info("конфиг читается из окружения")
 		err = cleanenv.ReadEnv(cfg)
 	}
 	if err != nil {
