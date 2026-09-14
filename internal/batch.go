@@ -87,6 +87,8 @@ func (b *Batch) Add(book Book) {
 	}
 
 	if len(b.pending) > 0 && b.total+book.Size > b.maxBatch {
+		slog.Warn("batch: батч переполнен, отправляем досрочно",
+			"total_mb", b.total/1024/1024, "max_mb", b.maxBatch/1024/1024)
 		b.flushLocked() // текущий батч переполнен — отправить сразу
 	}
 
@@ -103,7 +105,11 @@ func (b *Batch) Add(book Book) {
 
 	if b.timer == nil {
 		b.timer = time.AfterFunc(b.wait, b.flush)
+		slog.Info("batch: таймер запущен", "wait", b.wait)
 	}
+
+	slog.Info("batch: книга добавлена",
+		"name", book.Name, "size", book.Size, "count", len(b.pending), "total_mb", b.total/1024/1024)
 
 	b.mu.Unlock()
 }
@@ -157,10 +163,14 @@ func (b *Batch) flushLocked() {
 		b.timer = nil
 	}
 
+	slog.Info("batch: батч закрыт, ждём скачивания", "count", len(items))
+
 	go func() {
 		wg.Wait() // дождаться всех скачиваний батча
+		slog.Info("batch: все скачивания завершены, отправка", "count", len(items))
 
 		sentItems := b.sender.Send(context.Background(), items)
+		slog.Info("batch: итог отправки", "sent", len(sentItems), "failed", len(items)-len(sentItems))
 
 		sentSet := make(map[string]struct{}, len(sentItems))
 		for _, it := range sentItems {

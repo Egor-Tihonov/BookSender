@@ -21,16 +21,33 @@ import (
 )
 
 func main() {
+	if os.Getenv("LOG_LEVEL") == "debug" {
+		slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	}
+
 	slog.Info("Starting book sender service...")
 	cfg, err := internal.LoadConfig()
 	if err != nil {
 		slog.Error("не смог загрузить конфиг", "error", err)
 		os.Exit(1) // полная остановка, defer не выполняется
 	}
+	slog.Info("конфиг",
+		"port", cfg.TelegramConfig.Port,
+		"smtp_host", cfg.MailConfig.SMTPHost,
+		"smtp_port", cfg.MailConfig.SMTPPort,
+		"mail_to", cfg.MailConfig.MailTo,
+		"batch_wait", cfg.MailConfig.BatchWait,
+		"max_file_mb", cfg.MailConfig.MaxFileMB,
+		"max_mail_mb", cfg.MailConfig.MaxMailMB,
+		"max_batch_mb", cfg.MailConfig.MaxBatchMB,
+		"tmp_dir", cfg.MailConfig.TmpDir,
+	)
 
 	// после перезапуска батч в памяти пуст, недосланные файлы уже не нужны
 	if err := os.RemoveAll(cfg.MailConfig.TmpDir); err != nil {
 		slog.Error("не смог очистить временную папку", "dir", cfg.MailConfig.TmpDir, "error", err)
+	} else {
+		slog.Info("временная папка очищена", "dir", cfg.MailConfig.TmpDir)
 	}
 
 	tg := internal.NewTelegram(cfg.TelegramConfig.TelegramToken)
@@ -39,7 +56,7 @@ func main() {
 
 	handlers(cfg, tg, batch)
 
-	slog.Info("Starting server...")
+	slog.Info("сервер слушает", "addr", ":"+cfg.TelegramConfig.Port)
 	log.Fatal(http.ListenAndServe(":"+cfg.TelegramConfig.Port, nil))
 }
 
@@ -64,16 +81,21 @@ func handlers(cfg *internal.Config, tg *internal.Telegram, batch *internal.Batch
 
 		book, ok := internal.ParseUpdate(body)
 		if !ok {
+			slog.Debug("webhook: сообщение без книги, пропущено")
 			return
 		}
 		slog.Info("webhook: получена книга", "name", book.Name, "size", book.Size)
 
 		if book.Size > maxFileBytes {
+			slog.Warn("webhook: файл больше лимита, пропущен",
+				"name", book.Name, "size_mb", book.Size/1024/1024, "limit_mb", cfg.MailConfig.MaxFileMB)
 			text := fmt.Sprintf("Файл %s слишком большой (%d МБ), лимит %d МБ",
 				book.Name, book.Size/1024/1024, cfg.MailConfig.MaxFileMB)
 			go func() {
 				if err := tg.SendMessage(context.Background(), book.ChatID, text); err != nil {
 					slog.Error("webhook: не смог уведомить о большом файле", "error", err)
+				} else {
+					slog.Info("webhook: пользователь уведомлён о большом файле")
 				}
 			}()
 			return

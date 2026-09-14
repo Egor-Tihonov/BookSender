@@ -51,12 +51,19 @@ func (m *Mailer) Send(ctx context.Context, items []*Item) []*Item {
 		}
 		ok = append(ok, it)
 	}
+	slog.Info("mailer: начало отправки", "total", len(items), "downloaded", len(ok), "not_downloaded", len(failed))
 
 	maxMailBytes := int64(m.cfg.MaxMailMB) * 1024 * 1024
 	groups := splitByLimit(ok, maxMailBytes)
 
 	var sent []*Item
-	for _, group := range groups {
+	for i, group := range groups {
+		var groupSize int64
+		for _, it := range group {
+			groupSize += it.Book.Size
+		}
+		slog.Info("mailer: письмо", "index", i+1, "of", len(groups), "files", len(group), "size_mb", groupSize/1024/1024)
+
 		var lastErr error
 		success := false
 		for attempt := 1; attempt <= 3; attempt++ {
@@ -72,6 +79,7 @@ func (m *Mailer) Send(ctx context.Context, items []*Item) []*Item {
 		}
 		if success {
 			sent = append(sent, group...)
+			slog.Info("mailer: письмо отправлено", "index", i+1, "files", len(group))
 		} else {
 			slog.Error("mailer: не отправил письмо после 3 попыток", "error", lastErr)
 			failed = append(failed, group...)
@@ -86,6 +94,8 @@ func (m *Mailer) Send(ctx context.Context, items []*Item) []*Item {
 		text := fmt.Sprintf("Не удалось отправить: %s", strings.Join(names, ", "))
 		if err := m.tg.SendMessage(ctx, failed[0].Book.ChatID, text); err != nil {
 			slog.Error("mailer: не смог уведомить о провале", "error", err)
+		} else {
+			slog.Info("mailer: пользователь уведомлён о провале", "count", len(failed))
 		}
 	}
 
@@ -93,6 +103,8 @@ func (m *Mailer) Send(ctx context.Context, items []*Item) []*Item {
 	for _, it := range sent {
 		if err := os.Remove(it.Path); err != nil {
 			slog.Error("mailer: не удалил временный файл", "path", it.Path, "error", err)
+		} else {
+			slog.Debug("mailer: временный файл удалён", "path", it.Path)
 		}
 	}
 
@@ -223,7 +235,7 @@ func (m *Mailer) sendOne(items []*Item) error {
 		conn, err = net.DialTimeout("tcp", addr, 30*time.Second)
 	}
 	if err != nil {
-		return err
+		return fmt.Errorf("dial: %w", err)
 	}
 	defer conn.Close()
 
@@ -231,44 +243,47 @@ func (m *Mailer) sendOne(items []*Item) error {
 
 	c, err := smtp.NewClient(conn, host)
 	if err != nil {
-		return err
+		return fmt.Errorf("dial: %w", err)
 	}
 	defer c.Close()
 
 	if port != "465" {
 		if err := c.StartTLS(&tls.Config{ServerName: host}); err != nil {
-			return err
+			return fmt.Errorf("starttls: %w", err)
 		}
 	}
 
 	auth := smtp.PlainAuth("", m.cfg.SMTPUser, m.cfg.SMTPPass, host)
 	if err := c.Auth(auth); err != nil {
-		return err
+		return fmt.Errorf("auth: %w", err)
 	}
 
 	if err := c.Mail(m.cfg.SMTPFrom); err != nil {
-		return err
+		return fmt.Errorf("mail from: %w", err)
 	}
 	if err := c.Rcpt(m.cfg.MailTo); err != nil {
-		return err
+		return fmt.Errorf("rcpt to: %w", err)
 	}
 
 	wc, err := c.Data()
 	if err != nil {
-		return err
+		return fmt.Errorf("data: %w", err)
 	}
 
 	msg, err := m.buildMessage(items)
 	if err != nil {
 		wc.Close()
-		return err
+		return fmt.Errorf("build message: %w", err)
 	}
 	if _, err := wc.Write(msg); err != nil {
-		return err
+		return fmt.Errorf("write: %w", err)
 	}
 	if err := wc.Close(); err != nil {
-		return err
+		return fmt.Errorf("write: %w", err)
 	}
 
-	return c.Quit()
+	if err := c.Quit(); err != nil {
+		return fmt.Errorf("quit: %w", err)
+	}
+	return nil
 }
