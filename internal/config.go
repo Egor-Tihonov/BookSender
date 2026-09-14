@@ -24,19 +24,27 @@ import (
 )
 
 type Config struct {
-	TelegramToken string        `yaml:"TELEGRAM_TOKEN" env:"TELEGRAM_TOKEN"`
-	Mode          string        `yaml:"MODE" env:"MODE"`
-	WebhookURL    string        `yaml:"WEBHOOK_URL" env:"WEBHOOK_URL"`
-	Port          string        `yaml:"PORT" env:"PORT"`
-	SMTPHost      string        `yaml:"SMTP_HOST" env:"SMTP_HOST"`
-	SMTPPort      string        `yaml:"SMTP_PORT" env:"SMTP_PORT"`
-	SMTPUser      string        `yaml:"SMTP_USER" env:"SMTP_USER"`
-	SMTPPass      string        `yaml:"SMTP_PASS" env:"SMTP_PASS"`
-	SMTPFrom      string        `yaml:"SMTP_FROM" env:"SMTP_FROM"`
-	MaxFileMB     int           `yaml:"MAX_FILE_MB" env:"MAX_FILE_MB"`
-	MaxMailMB     int           `yaml:"MAX_MAIL_MB" env:"MAX_MAIL_MB"`
-	BatchWait     time.Duration `yaml:"BATCH_WAIT" env:"BATCH_WAIT"`
-	MailTo        string        `yaml:"MAIL_TO" env:"MAIL_TO"`
+	TelegramConfig TelegramConfig `yaml:"TELEGRAM"`
+	MailConfig     MailConfig     `yaml:"MAIL"`
+}
+
+type TelegramConfig struct {
+	TelegramToken string `yaml:"TELEGRAM_TOKEN" env:"TELEGRAM_TOKEN"`
+	Mode          string `yaml:"MODE" env:"MODE"`
+	WebhookURL    string `yaml:"WEBHOOK_URL" env:"WEBHOOK_URL"`
+	Port          string `yaml:"PORT" env:"PORT"`
+}
+
+type MailConfig struct {
+	SMTPHost  string        `yaml:"SMTP_HOST" env:"SMTP_HOST"`
+	SMTPPort  string        `yaml:"SMTP_PORT" env:"SMTP_PORT"`
+	SMTPUser  string        `yaml:"SMTP_USER" env:"SMTP_USER"`
+	SMTPPass  string        `yaml:"SMTP_PASS" env:"SMTP_PASS"`
+	SMTPFrom  string        `yaml:"SMTP_FROM" env:"SMTP_FROM"`
+	MaxFileMB int           `yaml:"MAX_FILE_MB" env:"MAX_FILE_MB"`
+	MaxMailMB int           `yaml:"MAX_MAIL_MB" env:"MAX_MAIL_MB"`
+	BatchWait time.Duration `yaml:"BATCH_WAIT" env:"BATCH_WAIT"`
+	MailTo    string        `yaml:"MAIL_TO" env:"MAIL_TO"`
 }
 
 func LoadConfig() (*Config, error) {
