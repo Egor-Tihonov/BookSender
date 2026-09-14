@@ -40,11 +40,13 @@ type Config struct {
 }
 
 func LoadConfig() (*Config, error) {
+	slog.Info("Loading config...")
 	cfg := &Config{}
 	err := cleanenv.ReadEnv(cfg)
 	if err != nil {
 		slog.Error("failed to load config", "error", err)
 		return nil, err
 	}
+	slog.Info("Config loaded successfully")
 	return cfg, nil
 }

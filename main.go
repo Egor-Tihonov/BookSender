@@ -14,10 +14,12 @@ package main
 
 import (
 	"booksender/internal"
+	"log/slog"
 	"os"
 )
 
 func main() {
+	slog.Info("Starting book sender service...")
 	_, err := internal.LoadConfig()
 	if err != nil {
 		os.Exit(1) // полная остановка, defer не выполняется
