@@ -1,0 +1,76 @@
+# ci.yml — GitHub Actions по стадиям как в GitLab: lint → test → build → deploy.
+#
+# lint, test, build бегут на любой пуш и на pull request.
+# deploy запускается только после них и только на пуш в main:
+# ставит Koyeb CLI и делает redeploy существующего сервиса.
+# Переменные окружения сервиса при этом не трогаются, они остаются в Koyeb.
+#
+# Нужно задать в Settings → Secrets and variables → Actions:
+#   secret   KOYEB_TOKEN    — API ключ Koyeb
+#   variable KOYEB_APP      — имя приложения в Koyeb
+#   variable KOYEB_SERVICE  — имя сервиса в Koyeb
+
+name: ci
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+env:
+  GO_VERSION: "1.26"
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - name: gofmt
+        run: |
+          files="$(gofmt -l .)"
+          if [ -n "$files" ]; then
+            echo "не отформатированы gofmt:"
+            echo "$files"
+            exit 1
+          fi
+      - name: go vet
+        run: go vet ./...
+
+  test:
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - name: go test
+        run: go test -race ./...
+
+  build:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - name: docker build
+        run: docker build -t booksender:ci .
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - name: install koyeb cli
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/koyeb/koyeb-cli/master/install.sh | sh
+          echo "$HOME/.koyeb/bin" >> "$GITHUB_PATH"
+      - name: redeploy
+        env:
+          KOYEB_TOKEN: ${{ secrets.KOYEB_TOKEN }}
+        run: |
+          koyeb services redeploy "${{ vars.KOYEB_SERVICE }}" \
+            --app "${{ vars.KOYEB_APP }}" \
+            --wait --wait-timeout 10m
