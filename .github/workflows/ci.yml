@@ -1,9 +1,13 @@
-# ci.yml — GitHub Actions по стадиям как в GitLab: lint → test → build → deploy.
+# ci.yml — GitHub Actions.
 #
-# lint, test, build бегут на любой пуш и на pull request.
-# deploy запускается только после них и только на пуш в main:
-# ставит Koyeb CLI и делает redeploy существующего сервиса.
-# Переменные окружения сервиса при этом не трогаются, они остаются в Koyeb.
+# lint и test бегут на пуш в любую ветку кроме main и на pull request.
+# Мерж в main закрыт защитой ветки: без зелёных lint и test кнопка мержа
+# недоступна, прямой пуш в main запрещён (Settings → Branches).
+#
+# deploy запускается только на пуш в main, то есть по факту мержа,
+# и не повторяет проверки: они уже прошли на pull request.
+# Делает redeploy существующего сервиса Koyeb, образ Koyeb собирает сам.
+# Переменные окружения сервиса при этом не трогаются.
 #
 # Нужно задать в Settings → Secrets and variables → Actions:
 #   secret   KOYEB_TOKEN    — API ключ Koyeb
@@ -22,6 +26,7 @@ env:
 
 jobs:
   lint:
+    if: github.ref != 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -40,6 +45,7 @@ jobs:
         run: go vet ./...
 
   test:
+    if: github.ref != 'refs/heads/main'
     runs-on: ubuntu-latest
     needs: lint
     steps:
@@ -50,18 +56,9 @@ jobs:
       - name: go test
         run: go test -race ./...
 
-  build:
-    runs-on: ubuntu-latest
-    needs: test
-    steps:
-      - uses: actions/checkout@v4
-      - name: docker build
-        run: docker build -t booksender:ci .
-
   deploy:
-    runs-on: ubuntu-latest
-    needs: build
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
     steps:
       - name: install koyeb cli
         run: |
